@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Messages</title>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rwoIResjU2yc3z8GV/NPeZWAv56rSmLldC3R/AZzGRnGxQQKnKkoFVhFQhNUwEyJ" crossorigin="anonymous">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/js/bootstrap.min.js" integrity="sha384-vBWWzlZJ8ea9aCX4pEW3rVHjgjt7zpkNpZk+02D9phzyeVkE+jo0ieGizqPLForn" crossorigin="anonymous"></script>
+    <script src='https://code.responsivevoice.org/responsivevoice.js'></script>
+
+
+    <style>
+        .scaled-image {
+            width: 100%;
+            height: auto;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        h4 {
+            font-size: 4.5rem;
+        }
+        h1 {
+            font-size: 3.0rem;
+        }
+
+
+
+        .selected-contact {
+        color: black;
+        border-color: crimson;
+        border-width: 10px;
+
+        }
+
+        .message_from_me {
+            margin-right: 10vw;
+        }
+
+        .message_from_them {
+            margin-left: 10vw;
+        }
+
+
+    </style>
+</head>
+<body>
+
+<div class="container" style="width: 100%; height: 100%;">
+<div class="row" style="background-color: darkslategray; height: 10vh; color: lightcyan">
+    <h1>Messages</h1>
+</div>
+
+<div class="row" style="width: 100%; height: 90vh;">
+    <div class="col-4" style="background-color: lightblue;">
+        <div class="container"  style="margin-top: 20px;" id="contacts">
+
+        </div>
+    </div>
+    <div class="col-8" style="background-color: cadetblue; overflow-y: scroll" id="messages">
+
+    </div>
+</div>
+
+</div>
+
+<script>
+    contacts = [];
+    selectedNameIndex = 0;
+
+    messages = [];
+    selectedMessageIndex = 0;
+
+    function selectContact(index) {
+        selectedNameIndex = index;
+        $(".contact-card").removeClass('selected-contact');
+        $("#contact-"+index).addClass('selected-contact');
+        speak(contacts[index].name);
+        loadMessages(index);
+    }
+
+    function selectMessage(index){
+        console.log(index);
+        selectedMessageIndex = index;
+        $(".message").removeClass('selected-contact');
+        $('.message-'+index).addClass('selected-contact');
+        scrollToMessage(index);
+
+        var msg = messages[index];
+        if(msg.text.length > 0) {
+            speak(msg.text);
+        } else {
+            speak("Picture");
+        }
+    }
+
+    function scrollToMessage(messageIndex){
+        var msg = $(".message-"+messageIndex);
+        var msgs = $("#messages");
+
+
+        var moveDelta = msg.position().top - msgs.height()/2 + msg.height()/2;
+
+        msgs.animate(
+                {scrollTop:
+                msgs.scrollTop() + moveDelta
+                }, Math.min(Math.abs(2*moveDelta), 400));
+    }
+
+
+    _speakQueue = [];
+    _speakGoing = false;
+    function reSpeak(){
+
+        if(_speakQueue.length > 0){
+            txt = _speakQueue.pop();
+            console.log("Off queue: "+txt);
+            speak(txt);
+        } else {
+            console.log("Queue was empty");
+        }
+    }
+    function speak(text){
+        if(text.length < 1){
+            return;
+        }
+        if(_speakGoing){
+            _speakQueue.push(text);
+            console.log(_speakQueue);
+        } else {
+            _speakGoing = true;
+            responsiveVoice.speak(text, "US English Female", {onend: function(){ console.log("done"); _speakGoing=false; reSpeak()}});
+        }
+
+    }
+
+    function loadMessages(index){
+        $("#messages").empty();
+        messages = [];
+        selectedMessageIndex = 0;
+
+        $.getJSON('/messages/'+contacts[index].key, function(in_messages){
+            messages = in_messages.messages;
+            messages.forEach(function(message, i) {
+                incoming_class = message.incoming ? 'message_from_them' : 'message_from_me';
+                if (message.text) {
+                    $("#messages").append(`
+                    <div class="card message ${incoming_class} message-${i}" style="margin-top: 10px;" id="message-${i}">
+                    <h1 class="card-title">${message.text}</h1>
+                    </div>
+                    `);
+                    $("#message-"+i).click(function(){selectMessage(i)});
+                }
+                message.images.forEach(function(imageurl,j){
+                    $("#messages").append(`
+                    <div class="card message ${incoming_class} message-${i}" style="margin-top: 10px;" id="message-${i}-img-${j}">
+                    <img class="card-top scaled-image" src="${imageurl}">
+                    </div>
+                    `);
+                });
+
+            });
+            selectMessage(0);
+            scrollBottom("#messages");
+        })
+
+    }
+
+    function updateContacts(){
+        $.getJSON('/contacts', function(data){
+            contacts = data.contacts;
+            $("#contacts").empty();
+            contacts.forEach(function(contact, i){
+                let index = i;
+                $("#contacts").append(`
+<div class="card contact-card" style="margin-top: 10px;" data-index=${i} id="contact-${i}">
+<div class="card-block">
+<h4 class="card-title">${contact.name}</h4>
+</div>
+</div>`);
+                $("#contact-"+index).click(function(){selectContact(index)})
+            });
+            selectContact(0);
+        })
+    }
+
+
+    $(updateContacts);
+
+    $(function(){
+        window.onkeyup = function(e) {
+           var key = e.keyCode ? e.keyCode : e.which;
+            console.log(key);
+
+           if (key == 40) {
+               var index = Math.min((selectedMessageIndex + 1) , messages.length-1);
+               selectMessage(index);
+           }else if (key == 38) {
+               var index = Math.max((selectedMessageIndex - 1) ,0);
+               selectMessage(index);
+           }
+
+            if (key == 65){
+                var index = Math.min((selectedNameIndex + 1), contacts.length -1);
+                selectContact(index);
+            } else if(key == 81){
+                var index = Math.max((selectedNameIndex - 1), 0);
+                selectContact(index);
+            }
+
+            if(key == 82){
+                loadMessages(selectedNameIndex);
+            }
+        }
+    });
+
+    $(function(){
+        window.document.body.webkitRequestFullScreen();
+    });
+
+
+    function scrollBottom(selector){
+        $(selector).scrollTop($(selector)[0].scrollHeight);
+    }
+
+</script>
+
+</body>
+</html>
